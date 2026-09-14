@@ -390,7 +390,11 @@ export function GuidedAssistant({ role }: { role: Role }) {
   function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!input.trim() || isPending) return;
-    const text = input.trim();
+    sendText(input.trim());
+  }
+
+  function sendText(text: string) {
+    if (!text.trim() || isPending) return;
     setInput("");
     pushMessages({ id: `user-${Date.now()}`, role: "user", text });
     startTransition(async () => {
@@ -598,6 +602,32 @@ export function GuidedAssistant({ role }: { role: Role }) {
                     Cancel
                   </button>
                 </div>
+              </div>
+            )}
+            {messages.length <= 1 && !proposal && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {(role === "owner"
+                  ? [
+                      "Release inventory every evening this month",
+                      "Block Friday for owner use",
+                      "How is my billboard performing?",
+                    ]
+                  : [
+                      "Find premium evening screens",
+                      "Bid 12000 on Cyber Towers Landmark",
+                      "Plan a campaign with auto-bid",
+                    ]
+                ).map((suggestion) => (
+                  <button
+                    type="button"
+                    key={suggestion}
+                    disabled={isPending}
+                    onClick={() => sendText(suggestion)}
+                    className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-[11px] font-bold text-cyan-700 hover:bg-cyan-100 disabled:opacity-50"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
               </div>
             )}
           </div>

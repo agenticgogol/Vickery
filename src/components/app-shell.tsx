@@ -40,6 +40,9 @@ export function AppShell({
     : pathname.startsWith("/advertiser")
       ? "advertiser"
       : "admin";
+  const onProtectedRoute = ["/owner", "/advertiser", "/admin"].some((p) => pathname.startsWith(p));
+  const isPreviewGated = !session && onProtectedRoute;
+  const roleLabel = role === "owner" ? "Billboard Owners" : role === "advertiser" ? "Advertiser" : "Admin";
   useEffect(
     () =>
       subscribeToDataChanges((source) => {
@@ -124,8 +127,33 @@ export function AppShell({
           {notification}
         </div>
       )}
-      <main className="mx-auto max-w-7xl px-5 py-8 lg:px-8 lg:py-10">
-        {children}
+      <main className="relative mx-auto max-w-7xl px-5 py-8 lg:px-8 lg:py-10">
+        {isPreviewGated ? (
+          <>
+            <div aria-hidden className="pointer-events-none select-none blur-sm">
+              {children}
+            </div>
+            <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/20 px-4">
+              <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-2xl">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-600">Preview mode</p>
+                <h2 className="mt-2 text-lg font-bold">
+                  Log in to explore the {roleLabel} workspace
+                </h2>
+                <p className="mt-2 text-sm leading-5 text-slate-500">
+                  What you see behind this is real demo data. Log in with a seeded account to bid, release slots, and manage campaigns.
+                </p>
+                <Link
+                  href="/login"
+                  className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+                >
+                  Log in
+                </Link>
+              </div>
+            </div>
+          </>
+        ) : (
+          children
+        )}
       </main>
       <GuidedAssistant key={role} role={role} />
     </div>

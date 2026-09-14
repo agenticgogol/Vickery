@@ -25,19 +25,29 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const role = await getRole(request);
 
-  if (!role) {
-    if (pathname === "/login") return NextResponse.next();
-    const loginUrl = new URL("/login", request.url);
-    return NextResponse.redirect(loginUrl);
+  // "/" is the public marketing landing page — logged-in visitors get bounced to their
+  // workspace, everyone else sees it (this used to redirect straight to /login, which
+  // swallowed the landing page entirely).
+  if (pathname === "/") {
+    if (role) return NextResponse.redirect(new URL(rolePath(role), request.url));
+    return NextResponse.next();
   }
 
-  if (pathname === "/login" || pathname === "/") {
-    return NextResponse.redirect(new URL(rolePath(role), request.url));
+  if (pathname === "/login") {
+    if (role) return NextResponse.redirect(new URL(rolePath(role), request.url));
+    return NextResponse.next();
   }
 
-  const home = rolePath(role);
-  if (!pathname.startsWith(home) && ["/owner", "/advertiser", "/admin"].some((p) => pathname.startsWith(p))) {
-    return NextResponse.redirect(new URL(home, request.url));
+  const protectedRoot = ["/owner", "/advertiser", "/admin"].find((p) => pathname.startsWith(p));
+  if (protectedRoot) {
+    if (!role) {
+      // No hard redirect: let the page render as a blurred preview with a login prompt
+      // (AppShell handles the overlay) instead of bouncing straight to /login.
+      return NextResponse.next();
+    }
+    if (protectedRoot !== rolePath(role)) {
+      return NextResponse.redirect(new URL(rolePath(role), request.url));
+    }
   }
 
   return NextResponse.next();

@@ -11,7 +11,7 @@ import {
 } from "@/lib/data";
 import { runAuction } from "@/lib/auction";
 import type { StoredAuctionResult } from "@/lib/db";
-import { PageIntro, StatusBadge } from "@/components/app-shell";
+import { PageIntro, StatusBadge, MetricCard } from "@/components/app-shell";
 import {
   closeAuction,
   createSlots,
@@ -57,6 +57,11 @@ function dateLabel(date: string) {
 function shiftDate(date: string, amount: number) {
   const value = new Date(`${date}T12:00:00Z`);
   value.setUTCDate(value.getUTCDate() + amount);
+  return value.toISOString().slice(0, 10);
+}
+function shiftMonths(date: string, amount: number) {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCMonth(value.getUTCMonth() + amount);
   return value.toISOString().slice(0, 10);
 }
 function weekDates(date: string) {
@@ -180,7 +185,24 @@ export function OwnerFlow({
   const [billboardModal, setBillboardModal] = useState<{
     billboard?: (typeof initialBillboards)[number];
   } | null>(null);
+  const [quickReleaseBusy, setQuickReleaseBusy] = useState(false);
+  const [quickReleaseHours, setQuickReleaseHours] = useState<string[]>(["19:00"]);
+  const [selectedSlotIds, setSelectedSlotIds] = useState<Set<string>>(new Set());
+  function toggleQuickReleaseHour(hour: string) {
+    setQuickReleaseHours((current) =>
+      current.includes(hour) ? current.filter((item) => item !== hour) : [...current, hour].sort(),
+    );
+  }
+  function toggleSlotSelection(id: string) {
+    setSelectedSlotIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   useEffect(() => subscribeToDataChanges(() => window.location.reload()), []);
+  useEffect(() => setSelectedSlotIds(new Set()), [selectedBillboardId]);
   const selectedBillboard =
     billboards.find((billboard) => billboard.id === selectedBillboardId) ??
     billboards[0];
@@ -188,6 +210,24 @@ export function OwnerFlow({
     () => slots.filter((slot) => slot.billboardId === selectedBillboardId),
     [selectedBillboardId, slots],
   );
+  const revocableSlots = useMemo(
+    () => billboardSlots.filter((slot) => slot.status !== "sold" && slot.status !== "auction_open"),
+    [billboardSlots],
+  );
+  const billboardStats = useMemo(() => {
+    const slotIds = new Set(billboardSlots.map((slot) => slot.id));
+    const sold = billboardSlots.filter((slot) => slot.status === "sold").length;
+    const bidCount = initialBids.filter((bid) => slotIds.has(bid.slotId)).length;
+    const payout = auctionResults
+      .filter((result) => slotIds.has(result.slotId) && result.status === "sold")
+      .reduce((sum, result) => sum + (result.ownerPayout ?? 0), 0);
+    return {
+      total: billboardSlots.length,
+      fillRate: billboardSlots.length ? Math.round((sold / billboardSlots.length) * 100) : 0,
+      bidCount,
+      payout,
+    };
+  }, [billboardSlots, initialBids, auctionResults]);
   const dates = viewMode === "day" ? [selectedDate] : weekDates(selectedDate);
   const recommendations = useMemo(
     () =>
@@ -402,6 +442,60 @@ export function OwnerFlow({
     }
   }
 
+  async function quickRelease(days: number, label: string) {
+    const hours = quickReleaseHours.length ? quickReleaseHours : ["19:00"];
+    const reservePrice = selectedBillboard.defaultReservePrice || 10000;
+    const dates = Array.from({ length: days }, (_, index) => shiftDate(selectedDate, index));
+    const candidates = dates.flatMap((date) =>
+      hours.map((hour) => ({
+        billboardId: selectedBillboardId,
+        date,
+        startTime: hour,
+        endTime: slotEnd(hour),
+        reservePrice,
+        status: "available" as const,
+        auctionCloseTime: `${date}T${hour}:00+05:30`,
+      })),
+    );
+    setQuickReleaseBusy(true);
+    try {
+      const { accepted, skipped } = partitionSlotCandidates(candidates, slots);
+      if (!accepted.length) {
+        setNotice("Every slot in that range already exists — nothing new to release.");
+        return;
+      }
+      const created = await createSlots(accepted);
+      setSlots((current) => [...created, ...current]);
+      publishDataChange("inventory");
+      setNotice(
+        `Released ${created.length} slot${created.length === 1 ? "" : "s"} for ${selectedBillboard.name} (${label.toLowerCase()}).` +
+          (skipped.length ? ` ${skipped.length} skipped — already had inventory that day.` : ""),
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to release inventory.");
+    } finally {
+      setQuickReleaseBusy(false);
+    }
+  }
+
+  async function bulkRevoke() {
+    const ids = Array.from(selectedSlotIds);
+    if (!ids.length) return;
+    if (!window.confirm(`Revoke ${ids.length} inventory block${ids.length === 1 ? "" : "s"}? This can't be undone.`)) return;
+    setQuickReleaseBusy(true);
+    try {
+      await Promise.all(ids.map((id) => deleteSlot(id)));
+      publishDataChange("inventory");
+      setSlots((current) => current.filter((item) => !selectedSlotIds.has(item.id)));
+      setSelectedSlotIds(new Set());
+      setNotice(`Revoked ${ids.length} inventory block${ids.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to revoke some slots.");
+    } finally {
+      setQuickReleaseBusy(false);
+    }
+  }
+
   async function remove(slot: Slot) {
     if (!window.confirm("Delete this inventory block?")) return;
     try {
@@ -487,6 +581,15 @@ export function OwnerFlow({
           </button>
         </div>
       )}
+      {dashboard && (
+        <div className="mb-6 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <MetricCard label="Billboards" value={String(dashboard.activeBillboards)} detail="Active screens" accent="cyan" />
+          <MetricCard label="Available" value={String(dashboard.availableSlots)} detail="Slots open to bid" accent="cyan" />
+          <MetricCard label="Live auctions" value={String(dashboard.openAuctions)} detail="Closing soon" accent="orange" />
+          <MetricCard label="Sold" value={String(dashboard.soldSlots)} detail="Slots cleared" accent="violet" />
+          <MetricCard label="Earnings" value={formatRupees(dashboard.ownerEarnings)} detail="Net payout to date" accent="violet" />
+        </div>
+      )}
       <section className="mb-6 rounded-2xl border border-violet-100 bg-violet-50/50 p-5 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -559,22 +662,98 @@ export function OwnerFlow({
                 type="button"
                 key={billboard.id}
                 onClick={() => setSelectedBillboardId(billboard.id)}
-                className={`w-full rounded-xl p-3 text-left transition ${selectedBillboardId === billboard.id ? "bg-slate-950 text-white" : "hover:bg-slate-50"}`}
+                className={`flex w-full items-center gap-3 rounded-xl p-3 text-left transition ${selectedBillboardId === billboard.id ? "bg-slate-950 text-white" : "hover:bg-slate-50"}`}
               >
-                <p className="text-sm font-bold">{billboard.name}</p>
-                <p
-                  className={`mt-1 text-xs ${selectedBillboardId === billboard.id ? "text-white/55" : "text-slate-400"}`}
-                >
-                  {billboard.area} · {billboard.qualityTier}
-                  {billboard.verificationStatus && billboard.verificationStatus !== "verified"
-                    ? ` · ${billboard.verificationStatus === "pending" ? "Pending verification" : "Verification rejected"}`
-                    : ""}
-                </p>
+                {billboard.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={billboard.imageUrl}
+                    alt=""
+                    className="h-10 w-14 shrink-0 rounded-lg object-cover"
+                  />
+                ) : (
+                  <span className="grid h-10 w-14 shrink-0 place-items-center rounded-lg bg-slate-100 text-[10px] font-bold text-slate-400">
+                    No photo
+                  </span>
+                )}
+                <span className="min-w-0">
+                  <p className="truncate text-sm font-bold">{billboard.name}</p>
+                  <p
+                    className={`mt-1 truncate text-xs ${selectedBillboardId === billboard.id ? "text-white/55" : "text-slate-400"}`}
+                  >
+                    {billboard.area} · {billboard.qualityTier}
+                    {billboard.verificationStatus && billboard.verificationStatus !== "verified"
+                      ? ` · ${billboard.verificationStatus === "pending" ? "Pending verification" : "Verification rejected"}`
+                      : ""}
+                  </p>
+                </span>
               </button>
             ))}
           </div>
         </section>
         <section className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
+          {selectedBillboard.imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={selectedBillboard.imageUrl}
+              alt={selectedBillboard.name}
+              className="h-40 w-full rounded-t-2xl object-cover"
+            />
+          )}
+          <div className="grid grid-cols-4 divide-x divide-slate-100 border-b border-slate-100">
+            <div className="px-4 py-3 text-center">
+              <p className="text-lg font-bold">{billboardStats.total}</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-slate-400">Slots listed</p>
+            </div>
+            <div className="px-4 py-3 text-center">
+              <p className="text-lg font-bold">{billboardStats.fillRate}%</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-slate-400">Fill rate</p>
+            </div>
+            <div className="px-4 py-3 text-center">
+              <p className="text-lg font-bold">{billboardStats.bidCount}</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-slate-400">Total bids</p>
+            </div>
+            <div className="px-4 py-3 text-center">
+              <p className="text-lg font-bold">{formatRupees(billboardStats.payout)}</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-slate-400">Net payout</p>
+            </div>
+          </div>
+          <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-slate-500">One-click release:</span>
+              {hourlyOptions.map((hour) => (
+                <button
+                  key={hour}
+                  type="button"
+                  onClick={() => toggleQuickReleaseHour(hour)}
+                  aria-pressed={quickReleaseHours.includes(hour)}
+                  className={`rounded-full border px-2 py-1 text-[11px] font-bold ${quickReleaseHours.includes(hour) ? "border-cyan-500 bg-cyan-50 text-cyan-800" : "border-slate-200 bg-white text-slate-500 hover:border-cyan-300"}`}
+                >
+                  {hour}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {[
+                [7, "Next 7 days"],
+                [14, "Next 2 weeks"],
+                [30, "Next 30 days"],
+              ].map(([days, label]) => (
+                <button
+                  key={label as string}
+                  type="button"
+                  disabled={quickReleaseBusy || !quickReleaseHours.length}
+                  onClick={() => quickRelease(days as number, label as string)}
+                  className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {quickReleaseBusy ? "Releasing…" : label}
+                </button>
+              ))}
+              <span className="text-xs text-slate-400">
+                {quickReleaseHours.length || "0"} hour block{quickReleaseHours.length === 1 ? "" : "s"}/day · reserve {formatRupees(selectedBillboard.defaultReservePrice || 10000)} · bidding opens immediately.
+              </span>
+            </div>
+          </div>
           <div className="flex flex-col justify-between gap-4 border-b border-slate-100 p-5 sm:flex-row sm:items-center">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-600">
@@ -618,6 +797,30 @@ export function OwnerFlow({
               </button>
             </div>
           </div>
+          {billboardSlots.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-5 py-2.5">
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={revocableSlots.length > 0 && revocableSlots.every((slot) => selectedSlotIds.has(slot.id))}
+                  onChange={(event) =>
+                    setSelectedSlotIds(event.target.checked ? new Set(revocableSlots.map((slot) => slot.id)) : new Set())
+                  }
+                  className="h-4 w-4 accent-red-500"
+                />
+                Select all revocable
+              </label>
+              <button
+                type="button"
+                disabled={!selectedSlotIds.size || quickReleaseBusy}
+                onClick={bulkRevoke}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Revoke {selectedSlotIds.size || ""} selected
+              </button>
+              <span className="text-[11px] text-slate-400">Sold and auction-open slots can&apos;t be bulk revoked.</span>
+            </div>
+          )}
           <div className="divide-y divide-slate-100">
             {billboardSlots.length ? (
               billboardSlots
@@ -627,12 +830,22 @@ export function OwnerFlow({
                     `${b.date}T${b.startTime}`,
                   ),
                 )
-                .map((slot) => (
+                .map((slot) => {
+                  const revocable = slot.status !== "sold" && slot.status !== "auction_open";
+                  return (
                   <div
                     key={slot.id}
                     className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
                   >
-                    <div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        disabled={!revocable}
+                        checked={selectedSlotIds.has(slot.id)}
+                        onChange={() => toggleSlotSelection(slot.id)}
+                        className="h-4 w-4 accent-red-500 disabled:opacity-30"
+                      />
+                      <div>
                       <p className="text-sm font-bold">
                         {slot.date} · {slot.startTime}–{slot.endTime}
                       </p>
@@ -655,6 +868,7 @@ export function OwnerFlow({
                           · {formatRupees(clearingPrice(slot)?.amount ?? 0)}
                         </p>
                       )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={slot.status} />
@@ -680,7 +894,8 @@ export function OwnerFlow({
                       </button>
                     </div>
                   </div>
-                ))
+                  );
+                })
             ) : (
               <div className="px-5 py-10 text-center text-sm text-slate-500">
                 No inventory for this billboard yet.
@@ -951,12 +1166,33 @@ function SlotModal({
               onChange={(value) => setField("date", value)}
             />
             {form.releaseScope === "week" && (
-              <Field
-                label="End date"
-                type="date"
-                value={form.repeatUntil}
-                onChange={(value) => setField("repeatUntil", value)}
-              />
+              <div>
+                <Field
+                  label="End date"
+                  type="date"
+                  value={form.repeatUntil}
+                  onChange={(value) => setField("repeatUntil", value)}
+                />
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {[
+                    ["1 week", () => shiftDate(form.date, 7)],
+                    ["2 weeks", () => shiftDate(form.date, 14)],
+                    ["3 weeks", () => shiftDate(form.date, 21)],
+                    ["1 month", () => shiftMonths(form.date, 1)],
+                    ["2 months", () => shiftMonths(form.date, 2)],
+                    ["3 months", () => shiftMonths(form.date, 3)],
+                  ].map(([label, compute]) => (
+                    <button
+                      type="button"
+                      key={label as string}
+                      onClick={() => setField("repeatUntil", (compute as () => string)())}
+                      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:border-cyan-300 hover:text-cyan-700"
+                    >
+                      {label as string}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
             {!ownerUse && (
               <Field

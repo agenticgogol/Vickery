@@ -139,7 +139,7 @@ export const billboards: Billboard[] = [
     estimatedDailyTraffic: 185000,
     audienceProfile: "Tech professionals · commuters · premium retail",
     qualityTier: "Premium",
-    imageUrl: "/billboards/bb-hitech.svg",
+    imageUrl: "/billboards/street-hitech.jpg",
     faceCorners: [
       { x: 25, y: 25 }, { x: 75, y: 25 }, { x: 75, y: 66.667 }, { x: 25, y: 66.667 },
     ],
@@ -157,7 +157,7 @@ export const billboards: Billboard[] = [
     estimatedDailyTraffic: 142000,
     audienceProfile: "Business commuters · students · families",
     qualityTier: "Premium",
-    imageUrl: "/billboards/bb-gachibowli.svg",
+    imageUrl: "/billboards/street-scene.jpg",
     faceCorners: [
       { x: 27, y: 30 }, { x: 73, y: 30 }, { x: 73, y: 68.333 }, { x: 27, y: 68.333 },
     ],
@@ -175,7 +175,7 @@ export const billboards: Billboard[] = [
     estimatedDailyTraffic: 128000,
     audienceProfile: "Finance professionals · decision makers",
     qualityTier: "Premium",
-    imageUrl: "/billboards/bb-financial.svg",
+    imageUrl: "/billboards/street-financial.jpg",
     faceCorners: [
       { x: 25.7, y: 23.333 }, { x: 74.3, y: 23.333 }, { x: 74.3, y: 65 }, { x: 25.7, y: 65 },
     ],
@@ -193,7 +193,7 @@ export const billboards: Billboard[] = [
     estimatedDailyTraffic: 98000,
     audienceProfile: "Young professionals · dining · entertainment",
     qualityTier: "Standard",
-    imageUrl: "/billboards/bb-madhapur.svg",
+    imageUrl: "/billboards/street-madhapur.jpg",
     faceCorners: [
       { x: 28, y: 33.333 }, { x: 72, y: 33.333 }, { x: 72, y: 70 }, { x: 28, y: 70 },
     ],
@@ -211,7 +211,7 @@ export const billboards: Billboard[] = [
     estimatedDailyTraffic: 91000,
     audienceProfile: "Affluent households · luxury shoppers",
     qualityTier: "Premium",
-    imageUrl: "/billboards/bb-jubilee.svg",
+    imageUrl: "/billboards/street-jubilee.jpg",
     faceCorners: [
       { x: 25, y: 20 }, { x: 75, y: 20 }, { x: 75, y: 61.667 }, { x: 25, y: 61.667 },
     ],
@@ -229,7 +229,7 @@ export const billboards: Billboard[] = [
     estimatedDailyTraffic: 76000,
     audienceProfile: "Affluent households · professionals · visitors",
     qualityTier: "Standard",
-    imageUrl: "/billboards/bb-banjara.svg",
+    imageUrl: "/billboards/street-banjara.jpg",
     faceCorners: [
       { x: 29, y: 35 }, { x: 71, y: 35 }, { x: 71, y: 70 }, { x: 29, y: 70 },
     ],
@@ -247,7 +247,7 @@ export const billboards: Billboard[] = [
     estimatedDailyTraffic: 68000,
     audienceProfile: "IT employees · local residents",
     qualityTier: "Standard",
-    imageUrl: "/billboards/bb-kondapur.svg",
+    imageUrl: "/billboards/street-kondapur.jpg",
     faceCorners: [
       { x: 30, y: 36.667 }, { x: 70, y: 36.667 }, { x: 70, y: 70 }, { x: 30, y: 70 },
     ],
@@ -265,7 +265,7 @@ export const billboards: Billboard[] = [
     estimatedDailyTraffic: 115000,
     audienceProfile: "Daily commuters · shoppers · families",
     qualityTier: "Standard",
-    imageUrl: "/billboards/bb-secunderabad.svg",
+    imageUrl: "/billboards/street-secunderabad.jpg",
     faceCorners: [
       { x: 26, y: 26.667 }, { x: 74, y: 26.667 }, { x: 74, y: 66.667 }, { x: 26, y: 66.667 },
     ],
