@@ -1,0 +1,158 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  owner
+  advertiser
+  admin
+}
+
+model User {
+  id           String @id
+  name         String
+  role         Role
+  passwordHash String
+}
+
+model Billboard {
+  id                       String   @id
+  ownerId                  String
+  name                     String
+  city                     String
+  area                     String
+  location                 String?
+  latitude                 Float
+  longitude                Float
+  screenType               String
+  dimensions               String
+  estimatedDailyTraffic    Int
+  audienceProfile          String
+  qualityTier              String
+  defaultReservePrice      Int?
+  active                   Boolean  @default(true)
+  imageUrl                 String?
+  altitude                 Float?
+  uniqueHardwareId         String?
+  blackoutPeriods          String?
+  hardwareReliabilityNotes String?
+  verificationStatus       String   @default("pending")
+  verificationPhotos       String[] @default([])
+  rejectionReason          String?
+  faceCorners              Json?
+  deliveryWebhookUrl       String?
+  slots                    Slot[]
+}
+
+model Slot {
+  id                          String    @id
+  billboardId                 String
+  billboard                   Billboard @relation(fields: [billboardId], references: [id], onDelete: Cascade)
+  date                        String
+  startTime                   String
+  endTime                     String
+  reservePrice                Int
+  status                      String
+  published                   Boolean   @default(true)
+  ownerUse                    Boolean   @default(false)
+  auctionOpenTime             String?
+  auctionCloseTime            String?
+  minimumBidIncrement          Int?
+  antiSnipingWindowMinutes    Int?
+  antiSnipingExtensionMinutes Int?
+  bids                        Bid[]
+}
+
+model Advertiser {
+  id     String @id
+  name   String
+  accent String
+}
+
+model Creative {
+  id               String  @id
+  advertiserId     String
+  name             String
+  imageUrl         String
+  status           String  @default("approved")
+  rejectionReason  String?
+  mimeType         String?
+  fileSizeBytes    Int?
+  width            Int?
+  height           Int?
+}
+
+model Bid {
+  id           String   @id
+  slotId       String
+  slot         Slot     @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  advertiserId String
+  amount       Int
+  creativeId   String
+  createdAt    String
+}
+
+model Campaign {
+  id                   String   @id
+  advertiserId         String
+  name                 String
+  totalBudget          Int
+  startDate            String
+  endDate              String
+  preferredAreas       String[]
+  preferredTimeWindows String[]
+  audienceTags         String[]
+  qualityTier          String
+  creativeId           String
+  selectedSlotIds      String[]
+  buyingMode           String
+  maxBidPerSlot        Int?
+  status               String
+  createdAt            String
+}
+
+model AuctionResult {
+  id                        String   @id
+  slotId                    String   @unique
+  status                    String
+  winnerAdvertiserId        String?
+  winningBid                Int?
+  secondHighestBid          Int?
+  clearingPrice             Int?
+  closedAt                  String
+  creativeId                String?
+  platformFee               Int
+  ownerPayout               Int
+  creativeApprovalPending   Boolean  @default(false)
+}
+
+model ScheduledPlayback {
+  id             String  @id
+  slotId         String
+  creativeId     String
+  advertiserId   String
+  status         String
+  plannedStartAt String
+  plannedEndAt   String
+  playbackTimestamp String?
+  failureReason  String?
+  deliveryStatus String?
+  deliveryDetail String?
+}
+
+model Settlement {
+  id                   String @id
+  slotId               String
+  clearingPrice        Int
+  platformFee          Int
+  ownerPayout          Int
+  advertiserAmountDue  Int
+  ownerAmountPayable   Int
+  status               String
+  updatedAt            String
+}
